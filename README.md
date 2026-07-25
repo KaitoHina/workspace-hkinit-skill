@@ -66,7 +66,11 @@ Skill 會問你：
 5. **你嘅稱呼偏好？** — 例如「師兄」、「大佬」、「你」
 6. **你想用咩 tone？** — casual / formal / technical / friendly / minimal
 
-之後資料會 save 喺 `~/.config/claude/workspace-init-profile.json`，唔會再問。
+預設會建立 **local profile**（`.claude/project-profile.json`，跟 project 走），唔會儲存 global profile。
+
+如果你需要 global profile（跨 project 共用），可以叫 LLM 幫你 save 埋一份去 `~/.config/claude/`。Global profile 只儲存基本資料（user_name、company、language、preferred_form、tone），唔會包含 project 資訊。
+
+**如果已有 global profile 但未建立 local profile**，LLM 會 detect 到並提示你補返 project 名同描述，然後自動建立 local profile。
 
 ## 用法
 
@@ -82,7 +86,7 @@ Skill 會問你：
 | `/init --import my-backup.json` | 匯入 profile |
 | `/init --list-projects` | 列出所有已儲存嘅 project profiles |
 | `/init --save-project <dir> <json>` | 儲存 project-specific profile（`~/.config/claude/`） |
-| `/init --save-local|--sl <dir> <json>` | 儲存 profile 喺 `.claude/` 入面，自動 merge global profile |
+| `/init --save-local \| --sl <dir> <json>` | 儲存 profile 喺 `.claude/` 入面，自動 merge global profile |
 | `/init --update` | 自動更新 workspace-init 到最新版 |
 
 ## 更新
@@ -150,7 +154,7 @@ curl -sL https://raw.githubusercontent.com/ricehung29/workspace-hkinit-skill/mai
 /init --sl /path/to/project '{"project":"My App","project_details":"..."}'
 ```
 
-`--save-local` 會自動 merge global profile 嘅 `user_name`、`company`、`language`，所以你只需提供 project 相關嘅 field 就得。
+`--save-local` 會自動 merge global profile 嘅所有欄位（user_name、company、language、preferred_form、tone、extra_skills 等），所以你只需提供 project 相關嘅 field 就得。
 
 Profile 會 save 喺 project 嘅 `.claude/project-profile.json`，無論係 Git 定非 Git project 都 work。
 
@@ -172,7 +176,11 @@ Profile 會 save 喺 project 嘅 `.claude/project-profile.json`，無論係 Git 
 ### 依賴
 
 - Claude Code（已安裝）
-- `jq`（multi-project 同 profile 匯出/匯入用）：`brew install jq`
+- **`jq`** — JSON 處理（profile merge、context build、export/import）
+  - **macOS:** `brew install jq`
+  - **Linux:** `apt install jq` / `yum install jq`
+  - **Windows (Git Bash):** `curl -sL -o ~/bin/jq https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-windows-amd64.exe`
+- **git** — Git 整合 detect（已安裝）
 - 其他 skills（optional）：ponytail、graphify、yuanyuai-quota 等，冇嘅話就 skip
 
 ---
@@ -188,3 +196,23 @@ rm -rf ~/.config/claude/workspace-profiles
 ## License
 
 MIT
+
+---
+
+## Changelog
+
+### v2.1.0 → v2.2.0
+
+- **Profile priority**: `.claude/project-profile.json` > `workspace-profiles/<hash>.json` > global (原本: 永遠 global first)
+- **Default save**: 預設建立 local profile，global 只係 optional backup（原本: 預設 global）
+- **`--save` 改咗 priority**: 跟 local → workspace-profiles → global（原本: 固定 global）
+- **`--ctx` 改咗 loading**: 先 check local → fallback global（原本: 先 global）
+- **`--check`**: 改為 check local profile（原本: check global）
+- **JSON escaping**: 全部用 `jq -n --arg` build JSON，唔再 raw string interpolation
+- **JSON format**: 全部 output formatted multi-line（原本部分 one line）
+- **Global profile**: 只儲 basic info（user_name, company, language, preferred_form, tone），skip project 資訊
+- **`use_global` status**: `--ctx` detect 冇 local 但有 global 時 output `status: "use_global"`，提示建立 local
+- **Variable names**: 單字母改為 readable 全名
+- **顏色變數**: 刪除（未用過）
+- **Cache**: 完全移除 `CACHE_FILE` / `CACHE_TTL` / `get_cache` / `set_cache`
+- **Duplicate line**: 刪除重複嘅 `PROFILE=` assignment

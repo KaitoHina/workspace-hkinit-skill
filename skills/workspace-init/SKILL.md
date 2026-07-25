@@ -7,21 +7,25 @@ description: "每次對話開始時注入 workspace 背景、用戶偏好、語�
 
 每次對話開始時自動注入 workspace 背景資訊，或者手動用 `/init` 呼叫。
 
+**重要：所有 storage 操作都要經 `init-profile.sh`，唔好直接 read/write JSON files。**
+
+Script：`bash ~/.claude/skills/workspace-init/scripts/init-profile.sh <flag>`
+
 ## 用法
 
-```
-/init                             — 重新注入 workspace 背景（自動 detect Git + 推薦 skills）
-/init --full                      — 完整版（含 quota check + memory 狀態）
-/init --reset                     — 重置所有已儲存嘅資料
-/init --lang 廣東話                — 直接切換語言
-/init --tone formal               — 設定 tone（casual/formal/technical/friendly/minimal）
-/init --export [file.json]        — 匯出 profile
-/init --import <file.json>        — 匯入 profile
-/init --list-projects             — 列出所有已儲存嘅 project profiles
-/init --save-project <dir> <json>   — 儲存 project-specific profile（`~/.config/claude/`）
-/init --save-local|--sl <dir> <json> — 儲存 project profile 喺 `.claude/` 入面，自動 merge global profile
-/init --update                      — 自動更新 workspace-init 到最新版
-```
+| 指令 | 執行 | 功能 |
+|------|------|------|
+| `/init` | `bash init-profile.sh --ctx [pwd]` | 重新注入 workspace context（自動 detect Git + 推薦 skills） |
+| `/init --full` | 同上 | 完整版（含 quota check + memory 狀態） |
+| `/init --reset` | `bash init-profile.sh --reset` | 重置所有已儲存嘅資料 |
+| `/init --lang <lang>` | `bash init-profile.sh --save ...` | 直接切換語言，唔使重置 |
+| `/init --tone <tone>` | `bash init-profile.sh --save ...` | 設定 tone（casual/formal/technical/friendly/minimal） |
+| `/init --export [file]` | `bash init-profile.sh --export [file]` | 匯出 profile 做 JSON |
+| `/init --import <file>` | `bash init-profile.sh --import <file>` | 匯入 profile |
+| `/init --list-projects` | `bash init-profile.sh --list-projects` | 列出所有已儲存嘅 project profiles |
+| `/init --save-project <dir> <json>` | `bash init-profile.sh --save-project <dir> '<json>'` | 儲存 project-specific profile（`~/.config/claude/`） |
+| `/init --save-local|--sl <dir> <json>` | `bash init-profile.sh --save-local <dir> '<json>'` | 儲存 profile 喺 `.claude/` 入面，自動 merge global profile |
+| `/init --update` | `bash init-profile.sh --update` | 自動更新 workspace-init 到最新版 |
 
 ## 首次使用流程
 
@@ -34,7 +38,22 @@ description: "每次對話開始時注入 workspace 背景、用戶偏好、語�
 5. **你嘅稱呼偏好？**（例如：叫你「師兄」/「大佬」/「你」/ 直接用名）
 6. **你想用咩 tone？**（casual / formal / technical / friendly / minimal，預設 casual）
 
-呢啲資料會 save 落 `~/.config/claude/workspace-init-profile.json`，之後唔會再問。
+收集完資料後：
+
+1. **先建立 local profile**（跟 project 走）：`bash init-profile.sh --save-local <dir> '<json>'`
+2. **如用戶要求才建立 global profile**：`bash init-profile.sh --save <name> <company> <lang> <form> <tone>`（skip project 資訊）
+
+> 預設只建立 local profile（`.claude/project-profile.json`），global profile 只係 optional 嘅 backup，只儲 basic info（user_name, company, language, preferred_form, tone）。
+
+### ⚠️ 如果已有 global profile 但冇 local
+
+當 `--ctx` detect 到呢個情況，會 output `status: "use_global"` 連同 `message` 提示。
+
+**呢個係常見情況，你必須跟以下步驟做，唔好 skip：**
+1. 用 global 嘅基本資料（名、語言、tone）
+2. **主動問用戶**提供呢個 project 嘅名同簡短描述
+3. 用 `bash init-profile.sh --save-local <dir> '<json>'` 建立 local profile
+4. 如果用戶話唔需要，可以唔建立，但一定要講清楚佢用緊 global profile fallback
 
 ## 注入內容
 
@@ -67,7 +86,7 @@ description: "每次對話開始時注入 workspace 背景、用戶偏好、語�
 
 ### Git 整合
 
-每次 `/init` 會自動 detect：
+每次 `/init` 會自動 detect（用 `bash init-profile.sh --git [dir]`）：
 
 - Git repo 位置
 - 當前 branch
@@ -76,37 +95,27 @@ description: "每次對話開始時注入 workspace 背景、用戶偏好、語�
 
 呢啲資料會注入 LLM context，令回覆更貼近你嘅 project 實際情況。
 
-### Multi-project 支援
-
-唔同 Git repo 會自動儲存獨立嘅 project profile：
+### Storage 邏輯（由 init-profile.sh 處理）
 
 ```
-~/.config/claude/workspace-profiles/
-  ├── <repo1_hash>.json
-  ├── <repo2_hash>.json
-  └── ...
+.claude/project-profile.json                  ← 最高優先
+~/.config/claude/workspace-profiles/<hash>.json ← 第二
+~/.config/claude/workspace-init-profile.json   ← fallback (global)
 ```
 
-當你喺唔同 folder 開對話，會自動 load 對應嘅 project profile。
-
-### Local Project Profile（跟 project 走）
-
-非 Git project 或者你想 profile 跟 repo 一齊 share，可以用 `--save-local`：
-
-```
-/init --save-local /path/to/project '{"project":"My App","project_details":"..."}'
-```
-
-Profile 會 save 喺 project 嘅 `.claude/project-profile.json`，無論係 Git 定非 Git project 都 work。
-
-**載入優先級：**
+**載入優先級（由 init-profile.sh 嘅 find_project_profile() 處理）：**
 1. `.claude/project-profile.json`（最高優先，跟 project 走）
 2. `~/.config/claude/workspace-profiles/<hash>.json`（Git project 專用）
 3. 冇 → 用 global profile 嘅預設值
 
-### Skill 推薦系統
+當你打 `/init` 或 `/workspace-init`：
+1. Call `bash init-profile.sh --ctx [pwd]` 拎完整 context（已 merge global + local profile + git info）
+2. 根據 output 嘅 JSON 注入 workspace 背景
+3. Recommend skills（用 `bash init-profile.sh --recommend <lang> <branch>`）
 
-根據 detect 到嘅 project language 同 branch，會自動推薦相關 skills：
+## Skill 推薦系統
+
+用 `bash init-profile.sh --recommend <lang> <branch>`：
 
 | Project type | 推薦 skills |
 |--------------|-------------|
@@ -121,7 +130,7 @@ Branch-specific：
 - `feat/*` → PR review expert
 - `fix/*` → focused-fix
 
-### 可用 Skills 列表
+## 可用 Skills 列表
 
 | Skill | 點用 | 用途 |
 |-------|------|------|
@@ -133,16 +142,6 @@ Branch-specific：
 | `review` | `/review` | code review |
 | `simplify` | `/simplify` | 簡化 code |
 
-## 自動執行流程
-
-當對話開始或有 `pre_tool_use` hook 觸發時：
-
-1. 讀取 `~/.config/claude/workspace-init-profile.json` 檢查有冇 profile
-2. 冇 profile → 問用戶基本資料 → save 起
-3. 有 profile → detect Git context → load multi-project profile → 推薦 skills
-4. 根據任務類型自動呼叫對應 skill
-5. 所有 code change 寫入 project memory
-
 ## 觸發條件
 
 當以下情況時觸發：
@@ -150,6 +149,16 @@ Branch-specific：
 - 用戶輸入 `/init` 或 `/init --full`
 - 用戶輸入 `/workspace` 或 `/workspace-init`
 - 檢測到 workspace 切換
+
+## 自動執行流程
+
+當對話開始或有 `pre_tool_use` hook 觸發時（由 settings.json hook 執行）：
+
+1. `bash init-profile.sh --check` 檢查有冇 profile
+2. 冇 profile → 問用戶基本資料 → `bash init-profile.sh --save ...`
+3. 有 profile → `bash init-profile.sh --ctx [pwd]` 拎完整 context → 注入 workspace 背景
+4. 根據 task 類型自動呼叫對應 skill
+5. 所有 code change 寫入 project memory
 
 ## 分享用
 
@@ -188,3 +197,7 @@ cc switch --install-skill workspace-init.zip
   }
 }
 ```
+
+## 依賴
+
+- **bash** · **jq** · **git** · Claude Code
